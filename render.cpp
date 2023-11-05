@@ -113,6 +113,47 @@ bool Renderer::intersect(const Ray& ray, Shape* shape) {
         float discriminant = b * b - 4 * a * c;
         return (discriminant > 0);
     }
+    else if (shape->getType() == "cylinder") {
+        Cylinder* cylinder = static_cast<Cylinder*>(shape);
+        Vector3 oc = ray.origin - cylinder->center;
+        float a = ray.direction.x * ray.direction.x + ray.direction.z * ray.direction.z;
+        float b = 2.0f * (oc.x * ray.direction.x + oc.z * ray.direction.z);
+        float c = oc.x * oc.x + oc.z * oc.z - cylinder->radius * cylinder->radius;
+        float discriminant = b * b - 4 * a * c;
+        if (discriminant < 0) {
+            return false;
+        } else {
+            float t = (-b - sqrt(discriminant)) / (2.0f * a);
+            float y = ray.origin.y + t * ray.direction.y;
+            float yMin = cylinder->center.y - cylinder->height / 2.0f;
+            float yMax = cylinder->center.y + cylinder->height / 2.0f;
+            if (y >= yMin && y <= yMax) {
+                return true;
+            }
+        }
+    }
+    else if (shape->getType() == "triangle") {
+        Triangle* triangle = static_cast<Triangle*>(shape);
+        Vector3 edge1 = triangle->v1 - triangle->v0;
+        Vector3 edge2 = triangle->v2 - triangle->v0;
+        Vector3 pvec = cross(ray.direction, edge2);
+        float det = dot(edge1, pvec);
+        if (fabs(det) < 1e-8) {
+            return false;  // Ray is parallel to the triangle
+        }
+        float invDet = 1.0f / det;
+        Vector3 tvec = ray.origin - triangle->v0;
+        float u = dot(tvec, pvec) * invDet;
+        if (u < 0.0f || u > 1.0f) {
+            return false;
+        }
+        Vector3 qvec = cross(tvec, edge1);
+        float v = dot(ray.direction, qvec) * invDet;
+        if (v < 0.0f || u + v > 1.0f) {
+            return false;
+        }
+        return true;  // Ray intersects the triangle
+    }
     // TODO: Implement intersection tests for other shape types (cylinder, triangle, etc.)
     return false;
 }
@@ -129,6 +170,7 @@ std::vector<std::vector<bool>> Renderer::renderBinary() {
                 
                 // Check for intersections with any shape in the scene
                 for (Shape* shape : scene.shapes) {
+                    
                     if (intersect(ray, shape)) {
                         image[y][x] = true;  // Set pixel to white if there's an intersection
                         break;  // Exit loop once an intersection is found

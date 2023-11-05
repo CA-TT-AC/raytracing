@@ -2,7 +2,7 @@
 #include "head.h"
 int main() {
     Renderer renderer;
-    renderer.loadFromJSON("binary_primitves.json");
-    renderer.writeBinaryImageToPPM(renderer.renderBinary(), "binary_primitives.ppm");
+    renderer.loadFromJSON("./data/binary_primitves.json");
+    renderer.writeBinaryImageToPPM(renderer.renderBinary(), "./data/binary_primitives.ppm");
     return 0;
 }
