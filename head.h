@@ -42,11 +42,11 @@ public:
     Camera camera;
     Scene scene;
     void loadFromJSON(const std::string& filename);
-    std::vector<std::vector<bool>> renderBinary();
 
-
-    std::vector<std::vector<Color>> renderColor();
-    void writeBinaryImageToPPM(const std::vector<std::vector<bool>>& image, const std::string& filename);
+    // render part
+    std::vector<std::vector<Color>> render();
+    std::vector<std::vector<Color>> renderBinary();
+    std::vector<std::vector<Color>> renderPhong();
     void writeColorImageToPPM(const std::vector<std::vector<Color>>& image, const std::string& filename);
 private:
     Ray computeRay(int x, int y);

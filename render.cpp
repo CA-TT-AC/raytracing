@@ -53,6 +53,7 @@ void Renderer::loadFromJSON(const std::string& filename) {
     // Load scene data
     if (json.contains("scene")) {
         nlohmann::json sceneJson = json["scene"];
+        
         scene.backgroundColor = {
             sceneJson["backgroundcolor"][0],
             sceneJson["backgroundcolor"][1],
@@ -200,39 +201,6 @@ bool Renderer::intersect(const Ray& ray, Shape* shape) {
 }
 
 
-std::vector<std::vector<bool>> Renderer::renderBinary() {
-        std::vector<std::vector<bool>> image(camera.height, std::vector<bool>(camera.width, false));
-        
-        // Loop over each pixel in the image
-        for (int y = 0; y < camera.height; ++y) {
-            for (int x = 0; x < camera.width; ++x) {
-                // Compute ray for this pixel
-                Ray ray = computeRay(x, y);
-                
-                // Check for intersections with any shape in the scene
-                for (Shape* shape : scene.shapes) {
-                    
-                    if (intersect(ray, shape)) {
-                        image[y][x] = true;  // Set pixel to white if there's an intersection
-                        break;  // Exit loop once an intersection is found
-                    }
-                }
-            }
-        }
-        
-        return image;
-    }
-
-void Renderer::writeBinaryImageToPPM(const std::vector<std::vector<bool>>& image, const std::string& filename) {
-        std::ofstream file(filename);
-        file << "P5\n" << camera.width << " " << camera.height << "\n255\n";
-        for (const auto& row : image) {
-            for (bool pixel : row) {
-                char value = pixel ? 255 : 0;  // Convert bool to char (255 for true, 0 for false)
-                file.write(&value, 1);  // Write one byte for each pixel
-            }
-        }
-    }
 
 void Renderer::writeColorImageToPPM(const std::vector<std::vector<Color>>& image, const std::string& filename) {
         std::ofstream file(filename);
@@ -244,30 +212,48 @@ void Renderer::writeColorImageToPPM(const std::vector<std::vector<Color>>& image
         }
     }
 
-std::vector<std::vector<Color>> Renderer::renderColor() {
-        std::vector<std::vector<Color>> image(camera.height, std::vector<Color>(camera.width));
-        
-        for (int y = 0; y < camera.height; ++y) {
-            for (int x = 0; x < camera.width; ++x) {
-                Ray ray = computeRay(x, y);
-                bool hit = false;
-                for (Shape* shape : scene.shapes) {
-                    if (intersect(ray, shape)) {
-                        // Assume white color for intersection
-                        image[y][x] = {255, 255, 255};  
-                        hit = true;
-                        break;
-                    }
-                }
-                if (!hit) {  // No intersection, use background color
-                    image[y][x] = {
-                        static_cast<unsigned char>(scene.backgroundColor.r * 255),
-                        static_cast<unsigned char>(scene.backgroundColor.g * 255),
-                        static_cast<unsigned char>(scene.backgroundColor.b * 255)
-                    };
+std::vector<std::vector<Color>> Renderer::render(){
+    if (renderMode == "color"){
+        return renderPhong();
+    }
+    else if (renderMode == "binary"){
+        return renderBinary();
+    }
+    else{
+        std::cerr << "Error: Unknown render mode " << renderMode << std::endl;
+        return std::vector<std::vector<Color>>();
+    }
+    return std::vector<std::vector<Color>>();
+}
+
+std::vector<std::vector<Color>> Renderer::renderBinary(){
+    std::vector<std::vector<Color>> image(camera.height, std::vector<Color>(camera.width));
+    
+    for (int y = 0; y < camera.height; ++y) {
+        for (int x = 0; x < camera.width; ++x) {
+            Ray ray = computeRay(x, y);
+            bool hit = false;
+            for (Shape* shape : scene.shapes) {
+                if (intersect(ray, shape)) {
+                    // Assume white color for intersection
+                    image[y][x] = {255, 0, 0};  
+                    hit = true;
+                    break;
                 }
             }
+            if (!hit) {  // No intersection, use background color
+                image[y][x] = {
+                    static_cast<unsigned char>(scene.backgroundColor.r * 255),
+                    static_cast<unsigned char>(scene.backgroundColor.g * 255),
+                    static_cast<unsigned char>(scene.backgroundColor.b * 255)
+                };
+            }
         }
-        
-        return image;
+    }
+    
+    return image;
+}
+
+std::vector<std::vector<Color>> Renderer::renderPhong(){
+    //To be fill...
     }
