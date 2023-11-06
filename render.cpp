@@ -98,36 +98,77 @@ Ray Renderer::computeRay(int x, int y) {
         1.0f  // Assuming the image plane is at z = 1 in a left-handed system
     };
 
-    // TODO: Apply any camera transformations (rotation, translation) to the direction vector
+    // Compute the camera's basis vectors
+    Vector3 forward = Vector3::normalize(camera.lookAt - camera.position);  // z-axis
+    Vector3 right = Vector3::normalize(Vector3::cross(camera.upVector, forward));   // x-axis
+    Vector3 up = Vector3::cross(forward, right);                           // y-axis
 
-    return Ray(camera.position, direction);
+    // Build the camera's view matrix
+    Matrix4x4 viewMatrix = {
+        right.x, up.x, forward.x, 0,
+        right.y, up.y, forward.y, 0,
+        right.z, up.z, forward.z, 0,
+        -Vector3::dot(right, camera.position), -Vector3::dot(up, camera.position), -Vector3::dot(forward, camera.position), 1
+    };
+
+    // Transform the direction vector by the view matrix
+    Vector3 transformedDirection = viewMatrix * direction;
+
+    return Ray(camera.position, transformedDirection);
 }
 
 bool Renderer::intersect(const Ray& ray, Shape* shape) {
     if (shape->getType() == "sphere") {
         Sphere* sphere = static_cast<Sphere*>(shape);
         Vector3 oc = ray.origin - sphere->center;
-        float a = dot(ray.direction, ray.direction);
-        float b = 2.0f * dot(oc, ray.direction);
-        float c = dot(oc, oc) - sphere->radius * sphere->radius;
+        float a = Vector3::dot(ray.direction, ray.direction);
+        float b = 2.0f * Vector3::dot(oc, ray.direction);
+        float c = Vector3::dot(oc, oc) - sphere->radius * sphere->radius;
         float discriminant = b * b - 4 * a * c;
         return (discriminant > 0);
     }
     else if (shape->getType() == "cylinder") {
         Cylinder* cylinder = static_cast<Cylinder*>(shape);
         Vector3 oc = ray.origin - cylinder->center;
-        float a = ray.direction.x * ray.direction.x + ray.direction.z * ray.direction.z;
-        float b = 2.0f * (oc.x * ray.direction.x + oc.z * ray.direction.z);
-        float c = oc.x * oc.x + oc.z * oc.z - cylinder->radius * cylinder->radius;
+        float a = Vector3::dot(ray.direction, ray.direction) - pow(Vector3::dot(ray.direction, cylinder->axis), 2);
+        float b = 2.0f * (Vector3::dot(oc, ray.direction) - Vector3::dot(ray.direction, cylinder->axis) * Vector3::dot(oc, cylinder->axis));
+        float c = Vector3::dot(oc, oc) - pow(Vector3::dot(oc, cylinder->axis), 2) - cylinder->radius * cylinder->radius;
         float discriminant = b * b - 4 * a * c;
-        if (discriminant < 0) {
-            return false;
-        } else {
-            float t = (-b - sqrt(discriminant)) / (2.0f * a);
-            float y = ray.origin.y + t * ray.direction.y;
-            float yMin = cylinder->center.y - cylinder->height / 2.0f;
-            float yMax = cylinder->center.y + cylinder->height / 2.0f;
-            if (y >= yMin && y <= yMax) {
+
+        // Check intersection with the sides of the cylinder
+        if (discriminant >= 0) {
+            float t1 = (-b - sqrt(discriminant)) / (2.0f * a);
+            float t2 = (-b + sqrt(discriminant)) / (2.0f * a);
+            Vector3 point1 = ray.origin + ray.direction * t1;
+            Vector3 point2 = ray.origin + ray.direction * t2;
+            float heightStart = Vector3::projectAlongAxis(cylinder->getBottomCenter(), cylinder->axis);
+            float heightEnd = Vector3::projectAlongAxis(cylinder->getTopCenter(), cylinder->axis);
+
+            float point1Projection = Vector3::projectAlongAxis(point1, cylinder->axis);
+            float point2Projection = Vector3::projectAlongAxis(point2, cylinder->axis);
+
+            if ((point1Projection >= heightStart && point1Projection <= heightEnd)
+                || (point2Projection >= heightStart && point2Projection <= heightEnd)) {
+                return true;
+            }
+        }
+
+        // Check intersection with the top cap of the cylinder
+        Vector3 topCenter = cylinder->getTopCenter();
+        float tTop = Vector3::dot(topCenter - ray.origin, cylinder->axis) / Vector3::dot(ray.direction, cylinder->axis);
+        if (tTop >= 0) {
+            Vector3 pointOnTopCap = ray.origin + ray.direction * tTop;
+            if (Vector3::lengthSquared(pointOnTopCap - topCenter) <= cylinder->radius * cylinder->radius) {
+                return true;
+            }
+        }
+
+        // Check intersection with the bottom cap of the cylinder
+        Vector3 bottomCenter = cylinder->getBottomCenter();
+        float tBottom = Vector3::dot(bottomCenter - ray.origin, cylinder->axis) / Vector3::dot(ray.direction, cylinder->axis);
+        if (tBottom >= 0) {
+            Vector3 pointOnBottomCap = ray.origin + ray.direction * tBottom;
+            if (Vector3::lengthSquared(pointOnBottomCap - bottomCenter) <= cylinder->radius * cylinder->radius) {
                 return true;
             }
         }
@@ -136,19 +177,19 @@ bool Renderer::intersect(const Ray& ray, Shape* shape) {
         Triangle* triangle = static_cast<Triangle*>(shape);
         Vector3 edge1 = triangle->v1 - triangle->v0;
         Vector3 edge2 = triangle->v2 - triangle->v0;
-        Vector3 pvec = cross(ray.direction, edge2);
-        float det = dot(edge1, pvec);
+        Vector3 pvec = Vector3::cross(ray.direction, edge2);
+        float det = Vector3::dot(edge1, pvec);
         if (fabs(det) < 1e-8) {
             return false;  // Ray is parallel to the triangle
         }
         float invDet = 1.0f / det;
         Vector3 tvec = ray.origin - triangle->v0;
-        float u = dot(tvec, pvec) * invDet;
+        float u = Vector3::dot(tvec, pvec) * invDet;
         if (u < 0.0f || u > 1.0f) {
             return false;
         }
-        Vector3 qvec = cross(tvec, edge1);
-        float v = dot(ray.direction, qvec) * invDet;
+        Vector3 qvec = Vector3::cross(tvec, edge1);
+        float v = Vector3::dot(ray.direction, qvec) * invDet;
         if (v < 0.0f || u + v > 1.0f) {
             return false;
         }
