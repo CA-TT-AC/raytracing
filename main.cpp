@@ -2,8 +2,8 @@
 #include "head.h"
 int main() {
     Renderer renderer;
-    renderer.loadFromJSON("./data/binary_primitves.json");
-    // renderer.loadFromJSON("./data/simple_phong.json");
+    // renderer.loadFromJSON("./data/binary_primitves.json");
+    renderer.loadFromJSON("./data/simple_phong.json");
     renderer.writeColorImageToPPM(renderer.renderBinary(), "./data/binary_primitives.ppm");
     return 0;
 }

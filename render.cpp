@@ -70,6 +70,19 @@ void Renderer::loadFromJSON(const std::string& filename) {
         // Load shapes
         for (const auto& shapeJson : sceneJson["shapes"]) {
             std::string type = shapeJson["type"];
+            Material material;
+            if (shapeJson.contains("material")) {
+                const auto& matJson = shapeJson["material"];
+                material.ks = matJson["ks"];
+                material.kd = matJson["kd"];
+                material.specularExponent = matJson["specularexponent"];
+                material.diffuseColor = { matJson["diffusecolor"][0], matJson["diffusecolor"][1], matJson["diffusecolor"][2] };
+                material.specularColor = { matJson["specularcolor"][0], matJson["specularcolor"][1], matJson["specularcolor"][2] };
+                material.isReflective = matJson["isreflective"];
+                material.reflectivity = matJson["reflectivity"];
+                material.isRefractive = matJson["isrefractive"];
+                material.refractiveIndex = matJson["refractiveindex"];
+            }
             if (type == "sphere") {
                 Sphere* sphere = new Sphere();
                 sphere->center = { shapeJson["center"][0], shapeJson["center"][1], shapeJson["center"][2] };

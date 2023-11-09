@@ -102,4 +102,35 @@ public:
 struct Color {
     unsigned char r, g, b;
 };
+class LightSource {
+public:
+    Vector3 position;
+    Color intensity;
+
+    // Default constructor
+    LightSource() 
+        : position(Vector3{0, 0, 0}), intensity(Color{1, 1, 1}) {}
+
+    // Parameterized constructor
+    LightSource(const Vector3& pos, const Color& inten) 
+        : position(pos), intensity(inten) {}
+
+    // You can add methods for light behavior here, if necessary.
+};
+
+class Material {
+public:
+    float ks;  // Specular coefficient
+    float kd;  // Diffuse coefficient
+    int specularExponent;
+    Color diffuseColor;
+    Color specularColor;
+    bool isReflective;
+    float reflectivity;
+    bool isRefractive;
+    float refractiveIndex;
+
+    Material() : ks(0), kd(0), specularExponent(0), isReflective(false), reflectivity(0), isRefractive(false), refractiveIndex(1.0f) {}
+};
+
 #endif // BASE_H

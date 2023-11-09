@@ -30,21 +30,7 @@ public:
     float exposure;
 };
 
-class LightSource {
-public:
-    Vector3 position;
-    Color intensity;
 
-    // Default constructor
-    LightSource() 
-        : position(Vector3{0, 0, 0}), intensity(Color{1, 1, 1}) {}
-
-    // Parameterized constructor
-    LightSource(const Vector3& pos, const Color& inten) 
-        : position(pos), intensity(inten) {}
-
-    // You can add methods for light behavior here, if necessary.
-};
 
 
 class Scene {
