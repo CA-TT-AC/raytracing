@@ -53,7 +53,15 @@ void Renderer::loadFromJSON(const std::string& filename) {
     // Load scene data
     if (json.contains("scene")) {
         nlohmann::json sceneJson = json["scene"];
-        
+        // Load light sources
+        if (sceneJson.contains("lightsources")) {
+            for (const auto& lightJson : sceneJson["lightsources"]) {
+                LightSource* light = new LightSource();
+                light->position = { lightJson["position"][0], lightJson["position"][1], lightJson["position"][2] };
+                light->intensity = { lightJson["intensity"][0], lightJson["intensity"][1], lightJson["intensity"][2] };
+                scene.lights.push_back(light);
+            }
+        }
         scene.backgroundColor = {
             sceneJson["backgroundcolor"][0],
             sceneJson["backgroundcolor"][1],

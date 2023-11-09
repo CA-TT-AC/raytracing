@@ -30,11 +30,46 @@ public:
     float exposure;
 };
 
+class LightSource {
+public:
+    Vector3 position;
+    Color intensity;
+
+    // Default constructor
+    LightSource() 
+        : position(Vector3{0, 0, 0}), intensity(Color{1, 1, 1}) {}
+
+    // Parameterized constructor
+    LightSource(const Vector3& pos, const Color& inten) 
+        : position(pos), intensity(inten) {}
+
+    // You can add methods for light behavior here, if necessary.
+};
+
+
 class Scene {
 public:
     Color backgroundColor;
     std::vector<Shape*> shapes;
+    std::vector<LightSource*> lights; // Container for light sources
+
+    ~Scene() {
+        // Destructor to clean up allocated Shapes
+        for (auto* shape : shapes) {
+            delete shape;
+        }
+        // Destructor to clean up allocated LightSources
+        for (auto* light : lights) {
+            delete light;
+        }
+    }
+
+    // Add a method to add lights to the scene
+    void addLight(LightSource* light) {
+        lights.push_back(light);
+    }
 };
+
 
 class Renderer {
 public:
