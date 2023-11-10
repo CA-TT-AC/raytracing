@@ -72,5 +72,6 @@ public:
 private:
     Ray computeRay(int x, int y);
 
-    bool intersect(const Ray& ray, Shape* shape);
+    bool intersectBinary(const Ray& ray, Shape* shape);
+    bool intersect(const Ray& ray, Shape* shape, float& distance);
 };

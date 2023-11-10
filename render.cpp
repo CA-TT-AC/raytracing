@@ -77,6 +77,7 @@ void Renderer::loadFromJSON(const std::string& filename) {
                 material.kd = matJson["kd"];
                 material.specularExponent = matJson["specularexponent"];
                 material.diffuseColor = { matJson["diffusecolor"][0], matJson["diffusecolor"][1], matJson["diffusecolor"][2] };
+                material.ambientColor = material.diffuseColor * 0.3f;
                 material.specularColor = { matJson["specularcolor"][0], matJson["specularcolor"][1], matJson["specularcolor"][2] };
                 material.isReflective = matJson["isreflective"];
                 material.reflectivity = matJson["reflectivity"];
@@ -85,11 +86,13 @@ void Renderer::loadFromJSON(const std::string& filename) {
             }
             if (type == "sphere") {
                 Sphere* sphere = new Sphere();
+                sphere->material = material;
                 sphere->center = { shapeJson["center"][0], shapeJson["center"][1], shapeJson["center"][2] };
                 sphere->radius = shapeJson["radius"];
                 scene.shapes.push_back(sphere);
             } else if (type == "cylinder") {
                 Cylinder* cylinder = new Cylinder();
+                cylinder->material = material;
                 cylinder->center = { shapeJson["center"][0], shapeJson["center"][1], shapeJson["center"][2] };
                 cylinder->axis = { shapeJson["axis"][0], shapeJson["axis"][1], shapeJson["axis"][2] };
                 cylinder->radius = shapeJson["radius"];
@@ -97,6 +100,7 @@ void Renderer::loadFromJSON(const std::string& filename) {
                 scene.shapes.push_back(cylinder);
             } else if (type == "triangle") {
                 Triangle* triangle = new Triangle();
+                triangle->material = material;
                 triangle->v0 = { shapeJson["v0"][0], shapeJson["v0"][1], shapeJson["v0"][2] };
                 triangle->v1 = { shapeJson["v1"][0], shapeJson["v1"][1], shapeJson["v1"][2] };
                 triangle->v2 = { shapeJson["v2"][0], shapeJson["v2"][1], shapeJson["v2"][2] };
@@ -139,7 +143,7 @@ Ray Renderer::computeRay(int x, int y) {
     return Ray(camera.position, transformedDirection);
 }
 
-bool Renderer::intersect(const Ray& ray, Shape* shape) {
+bool Renderer::intersectBinary(const Ray& ray, Shape* shape) {
     if (shape->getType() == "sphere") {
         Sphere* sphere = static_cast<Sphere*>(shape);
         Vector3 oc = ray.origin - sphere->center;
@@ -221,20 +225,187 @@ bool Renderer::intersect(const Ray& ray, Shape* shape) {
     return false;
 }
 
+bool Renderer::intersect(const Ray& ray, Shape* shape, float& distance) {
+    if (shape->getType() == "sphere") {
+        Sphere* sphere = static_cast<Sphere*>(shape);
+        Vector3 oc = ray.origin - sphere->center;
+        float a = Vector3::dot(ray.direction, ray.direction);
+        float b = 2.0f * Vector3::dot(oc, ray.direction);
+        float c = Vector3::dot(oc, oc) - sphere->radius * sphere->radius;
+        float discriminant = b * b - 4 * a * c;
+        if (discriminant > 0) {
+            float sqrtDiscriminant = sqrt(discriminant);
+            float t1 = (-b - sqrtDiscriminant) / (2.0f * a);
+            float t2 = (-b + sqrtDiscriminant) / (2.0f * a);
 
+            // Ensure t1 is the smaller (closer) t value
+            if (t1 > t2) {
+                std::swap(t1, t2);
+            }
 
-void Renderer::writeColorImageToPPM(const std::vector<std::vector<Color>>& image, const std::string& filename) {
-        std::ofstream file(filename);
-        file << "P6\n" << camera.width << " " << camera.height << "\n255\n";
-        for (const auto& row : image) {
-            for (Color pixel : row) {
-                file.write(reinterpret_cast<char*>(&pixel), 3);  // Write 3 bytes (RGB) for each pixel
+            // If t1 is positive, we use it
+            if (t1 > 0) {
+                distance = t1;
+                return true;
+            }
+            
+            // If t1 is negative but t2 is positive, we use t2
+            if (t2 > 0) {
+                distance = t2;
+                return true;
             }
         }
     }
+    else if (shape->getType() == "cylinder") {
+        Cylinder* cylinder = static_cast<Cylinder*>(shape);
+        Vector3 oc = ray.origin - cylinder->center;
+        float a = Vector3::dot(ray.direction, ray.direction) - pow(Vector3::dot(ray.direction, cylinder->axis), 2);
+        float b = 2.0f * (Vector3::dot(oc, ray.direction) - Vector3::dot(ray.direction, cylinder->axis) * Vector3::dot(oc, cylinder->axis));
+        float c = Vector3::dot(oc, oc) - pow(Vector3::dot(oc, cylinder->axis), 2) - cylinder->radius * cylinder->radius;
+        float discriminant = b * b - 4 * a * c;
+                // Check intersection with the sides of the cylinder
+        float minDistance = std::numeric_limits<float>::infinity();  // Initialize with max value
+        bool hasIntersection = false;
+        if (discriminant >= 0) {
+   
+            float t1 = (-b - sqrt(discriminant)) / (2.0f * a);
+            float t2 = (-b + sqrt(discriminant)) / (2.0f * a);
+            // Ensure t1 is the smaller (closer) t value
+            if (t1 > t2) {
+                std::swap(t1, t2);
+            }
+
+            Vector3 point1 = ray.origin + ray.direction * t1;
+            Vector3 point2 = ray.origin + ray.direction * t2;
+            float heightStart = Vector3::projectAlongAxis(cylinder->getBottomCenter(), cylinder->axis);
+            float heightEnd = Vector3::projectAlongAxis(cylinder->getTopCenter(), cylinder->axis);
+
+            float point1Projection = Vector3::projectAlongAxis(point1, cylinder->axis);
+            float point2Projection = Vector3::projectAlongAxis(point2, cylinder->axis);
+            // Check if t1 is within the cylinder height
+            if (t1 > 0 && point1Projection >= heightStart && point1Projection <= heightEnd) {
+                minDistance = std::min(minDistance, t1);
+                hasIntersection = true;
+            }
+            // If t1 is negative, check t2
+            else if (t2 > 0 && point2Projection >= heightStart && point2Projection <= heightEnd) {
+                minDistance = std::min(minDistance, t2);
+                hasIntersection = true;
+            }
+        }
+
+        // Check intersection with the top cap of the cylinder
+        Vector3 topCenter = cylinder->getTopCenter();
+        float tTop = Vector3::dot(topCenter - ray.origin, cylinder->axis) / Vector3::dot(ray.direction, cylinder->axis);
+        if (tTop >= 0) {
+            Vector3 pointOnTopCap = ray.origin + ray.direction * tTop;
+            if (tTop > 0 && Vector3::lengthSquared(pointOnTopCap - topCenter) <= cylinder->radius * cylinder->radius) {
+                minDistance = std::min(minDistance, tTop);
+                hasIntersection = true;
+            }
+        }
+
+        // Check intersection with the bottom cap of the cylinder
+        Vector3 bottomCenter = cylinder->getBottomCenter();
+        float tBottom = Vector3::dot(bottomCenter - ray.origin, cylinder->axis) / Vector3::dot(ray.direction, cylinder->axis);
+        if (tBottom >= 0) {
+            Vector3 pointOnBottomCap = ray.origin + ray.direction * tBottom;
+            if (tBottom > 0 && Vector3::lengthSquared(pointOnBottomCap - bottomCenter) <= cylinder->radius * cylinder->radius) {
+                minDistance = std::min(minDistance, tBottom);
+                hasIntersection = true;
+            }
+        }
+        // After all checks, if an intersection was found, update the distance
+        if (hasIntersection) {
+            distance = minDistance;
+            return true;
+        }
+        // If no intersection is found, return false
+        return false;
+    }
+    else if (shape->getType() == "triangle") {
+        Triangle* triangle = static_cast<Triangle*>(shape);
+        Vector3 edge1 = triangle->v1 - triangle->v0;
+        Vector3 edge2 = triangle->v2 - triangle->v0;
+        Vector3 pvec = Vector3::cross(ray.direction, edge2);
+        float det = Vector3::dot(edge1, pvec);
+        if (fabs(det) < 1e-8) {
+            return false;  // Ray is parallel to the triangle
+        }
+        float invDet = 1.0f / det;
+        Vector3 tvec = ray.origin - triangle->v0;
+        float u = Vector3::dot(tvec, pvec) * invDet;
+        if (u < 0.0f || u > 1.0f) {
+            return false;
+        }
+        Vector3 qvec = Vector3::cross(tvec, edge1);
+        float v = Vector3::dot(ray.direction, qvec) * invDet;
+        if (v < 0.0f || u + v > 1.0f) {
+            return false;
+        }
+        // Compute the distance to the intersection point
+        float minDistance = Vector3::dot(edge2, qvec) * invDet;
+        if (minDistance > 1e-8) { // Check for a positive distance to avoid intersections behind the ray origin
+            distance = minDistance;
+            return true;  // Ray intersects the triangle
+        }
+    }
+    return false;
+
+    // If no intersection is found, return false
+    return false;
+}
+Color calculateLocalIllumination(const Vector3& intersectionPoint, 
+                                 const Vector3& normal, 
+                                 const Material& material, 
+                                 const Vector3& viewDirection, 
+                                 const std::vector<LightSource*>& lights) {
+    Color globalAmbientLight{1, 1, 1}; // Assuming white color for global ambient light
+    Color ambient = globalAmbientLight * material.ambientColor; // Global ambient light multiplied by the material's ambient color
+    Color diffuse(0.0f, 0.0f, 0.0f);
+    Color specular(0.0f, 0.0f, 0.0f);
+
+    for (const auto& lightPtr : lights) {
+        Vector3 lightDir = (lightPtr->position - intersectionPoint).normalize(); // Direction from point to light
+        Vector3 halfVector = (viewDirection + lightDir).normalize(); // Halfway vector between view direction and light direction
+
+        // Diffuse reflection
+        float diff = std::max(Vector3::dot(normal, lightDir), 0.0f);
+        diffuse += lightPtr->intensity * (material.diffuseColor * diff);
+
+        // Specular reflection
+        float spec = std::pow(std::max(Vector3::dot(normal, halfVector), 0.0f), material.specularExponent);
+        specular += lightPtr->intensity * (material.specularColor * spec);
+    }
+
+    // Combine the components
+    Color pixelColor = ambient + diffuse + specular;
+
+    // Ensure that the color values are within the valid range [0, 1] or [0, 255] depending on your color implementation
+    pixelColor.clamp();
+
+    return pixelColor;
+}
+
+
+void Renderer::writeColorImageToPPM(const std::vector<std::vector<Color>>& image, const std::string& filename) {
+    std::ofstream file(filename);
+    file << "P6\n" << camera.width << " " << camera.height << "\n255\n";
+
+    for (const auto& row : image) {
+        for (const Color& pixel : row) {
+            unsigned char r, g, b;
+            pixel.getAsIntegers(r, g, b); // Convert float color values to unsigned char
+            file.write(reinterpret_cast<char*>(&r), 1); // Write red component
+            file.write(reinterpret_cast<char*>(&g), 1); // Write green component
+            file.write(reinterpret_cast<char*>(&b), 1); // Write blue component
+        }
+    }
+}
+
 
 std::vector<std::vector<Color>> Renderer::render(){
-    if (renderMode == "color"){
+    if (renderMode == "phong"){
         return renderPhong();
     }
     else if (renderMode == "binary"){
@@ -247,34 +418,106 @@ std::vector<std::vector<Color>> Renderer::render(){
     return std::vector<std::vector<Color>>();
 }
 
-std::vector<std::vector<Color>> Renderer::renderBinary(){
+std::vector<std::vector<Color>> Renderer::renderBinary() {
     std::vector<std::vector<Color>> image(camera.height, std::vector<Color>(camera.width));
-    
+
     for (int y = 0; y < camera.height; ++y) {
         for (int x = 0; x < camera.width; ++x) {
             Ray ray = computeRay(x, y);
             bool hit = false;
             for (Shape* shape : scene.shapes) {
-                if (intersect(ray, shape)) {
-                    // Assume white color for intersection
-                    image[y][x] = {255, 0, 0};  
+                if (intersectBinary(ray, shape)) {
+                    // Red color for intersection (assuming float range 0.0 to 1.0)
+                    image[y][x] = {1.0f, 0.0f, 0.0f};  
                     hit = true;
                     break;
                 }
             }
             if (!hit) {  // No intersection, use background color
-                image[y][x] = {
-                    static_cast<unsigned char>(scene.backgroundColor.r * 255),
-                    static_cast<unsigned char>(scene.backgroundColor.g * 255),
-                    static_cast<unsigned char>(scene.backgroundColor.b * 255)
-                };
+                image[y][x] = scene.backgroundColor; // Directly use background color
             }
         }
     }
-    
     return image;
 }
 
-std::vector<std::vector<Color>> Renderer::renderPhong(){
-    //To be fill...
+
+std::vector<std::vector<Color>> Renderer::renderPhong() {
+    std::vector<std::vector<Color>> image(camera.height, std::vector<Color>(camera.width));
+    
+    // Iterate over each pixel
+    for (int y = 0; y < camera.height; ++y) {
+        for (int x = 0; x < camera.width; ++x) {
+            Ray ray = computeRay(x, y); // Compute the ray for the current pixel
+            Color pixelColor = scene.backgroundColor; // Start with the background color
+
+            // Intersection test
+            float minDistance = std::numeric_limits<float>::max();
+            Shape* closestShape = nullptr;
+            for (Shape* shape : scene.shapes) {
+                float distance = std::numeric_limits<float>::max(); // Initialize distance to max value
+                if (intersect(ray, shape, distance) && distance < minDistance) {
+                    minDistance = distance;
+                    closestShape = shape;
+                }
+            }
+            // If a shape is hit by the ray
+            if (closestShape != nullptr) {
+                // Calculate intersection point and normal
+                Vector3 intersectionPoint = ray.origin + ray.direction * minDistance;
+                Vector3 normal = closestShape->getNormal(intersectionPoint);
+
+                // Calculate local illumination (Blinn-Phong)
+                pixelColor = calculateLocalIllumination(intersectionPoint, normal, closestShape->material, ray.direction, scene.lights);
+                // Shadows - check if the intersection point is in shadow
+                // (Optional: Could be optimized with shadow rays)
+                // if (isInShadow(intersectionPoint)) {
+                //     pixelColor = adjustForShadows(pixelColor);
+                // }
+
+                // // Reflection
+                // if (closestShape->material.isReflective) {
+                //     Color reflectedColor = calculateReflection(ray, intersectionPoint, normal, closestShape->material);
+                //     pixelColor = blendColor(pixelColor, reflectedColor, closestShape->material.reflectivity);
+                // }
+
+                // // Refraction
+                // if (closestShape->material.isRefractive) {
+                //     Color refractedColor = calculateRefraction(ray, intersectionPoint, normal, closestShape->material);
+                //     pixelColor = blendColor(pixelColor, refractedColor, closestShape->material.transparency);
+                // }
+
+                // // Textures
+                // if (closestShape->hasTexture()) {
+                //     Color textureColor = getTextureColor(intersectionPoint, closestShape);
+                //     pixelColor = blendTextureColor(pixelColor, textureColor);
+                // }
+
+                // // Tone mapping - linear
+                // pixelColor = toneMapping(pixelColor);
+            }
+            
+            // Set the color of the pixel in the image
+            image[y][x] = pixelColor;
+
+            // Bounding volume hierarchy (BVH) and other acceleration structures can be integrated into the intersection tests
+            // to speed up the rendering process. This is a more advanced topic and would significantly alter the structure of your code.
+        }
     }
+
+    return image;
+}
+
+// Note: The above functions such as calculateLocalIllumination, isInShadow, calculateReflection, etc., are placeholders
+// for the respective algorithms you would need to implement.
+
+// Additional functions needed for the Phong rendering would include the following:
+// - calculateLocalIllumination: Computes Blinn-Phong shading
+// - isInShadow: Determines if a point is in shadow or not
+// - adjustForShadows: Adjusts the color of a pixel based on shadowing
+// - calculateReflection: Calculates the reflected color from a surface
+// - calculateRefraction: Calculates the refracted color through a transparent object
+// - blendColor: Blends two colors based on a coefficient
+// - getTextureColor: Retrieves the color from a texture at a given point on a surface
+// - blendTextureColor: Blends the texture color with the object's base color
+// - toneMapping: Applies tone mapping to the final color
