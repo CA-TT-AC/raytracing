@@ -103,6 +103,7 @@ void Renderer::loadFromJSON(const std::string& filename) {
                 cylinder->axis = { shapeJson["axis"][0], shapeJson["axis"][1], shapeJson["axis"][2] };
                 cylinder->radius = shapeJson["radius"];
                 cylinder->height = shapeJson["height"];
+                cylinder->height *= 2;
                 scene.shapes.push_back(cylinder);
             } else if (type == "triangle") {
                 Triangle* triangle = new Triangle();

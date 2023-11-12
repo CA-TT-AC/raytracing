@@ -206,24 +206,27 @@ public:
     }
     Vector3 getTopCenter() const {
         Vector3 normalizedAxis = Vector3::normalize(axis);
-        return center + normalizedAxis * (height);
+        return center + normalizedAxis * (height * 0.5f);
     }
 
     Vector3 getBottomCenter() const {
         Vector3 normalizedAxis = Vector3::normalize(axis);
-        return center - normalizedAxis * (height);
+        return center - normalizedAxis * (height * 0.5f);
     }
     Vector3 getNormal(const Vector3& p) const {
         Vector3 normalizedAxis = Vector3::normalize(axis);
+        float halfHeight = height * 0.5f;
         float projection = Vector3::dot((p - center), normalizedAxis);
-        if (projection < 0 || projection > height) {
+        if (std::abs(projection) > halfHeight) {
             // The point is on the top or bottom cap
             return (projection < 0 ? -normalizedAxis : normalizedAxis);
         } else {
-            // The point is on the side, remove the component along the axis from the point to center vector
-            return Vector3::normalize(p - (center + normalizedAxis * projection));
+            // The point is on the side, calculate the normal for the curved surface
+            Vector3 onAxis = center + normalizedAxis * projection; // The closest point on the axis to p
+            return Vector3::normalize(p - onAxis);
         }
     }
+
 };
 
 class Triangle : public Shape {
