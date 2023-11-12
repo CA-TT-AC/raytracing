@@ -8,7 +8,13 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
-
+Color operator*(float scalar, const Color& color) {
+    return color * scalar; // Utilize the existing Color * float overload
+}
+// Non-member overload for float * Vector3
+Vector3 operator*(float scalar, const Vector3& vec) {
+    return vec * scalar; // Utilize the existing Vector3 * float overload
+}
 void Renderer::loadFromJSON(const std::string& filename) {
     printf("Start loadFromJSON....\n");
     // Open the file and parse the JSON
@@ -387,6 +393,62 @@ Color calculateLocalIllumination(const Vector3& intersectionPoint,
     return pixelColor;
 }
 
+bool Renderer::isInShadow(const Vector3& point, const std::vector<Shape*>& shapes, const std::vector<LightSource*>& lights) {
+    for (const auto* light : lights) {
+        Vector3 toLight = light->position - point;
+        float distanceToLight = Vector3::length(toLight);
+        Vector3 directionToLight = Vector3::normalize(toLight);
+
+        // Bias to avoid shadow acne
+        const float bias = 1e-4f; 
+        Vector3 startPoint = point + directionToLight * bias;
+
+        Ray shadowRay(startPoint, directionToLight);
+        
+        for (auto* shape : shapes) {
+            float distance = std::numeric_limits<float>::max();
+            if (intersect(shadowRay, shape, distance)) {
+                if (distance < distanceToLight) {
+                    return true; // The point is in shadow with respect to this light
+                }
+            }
+        }
+    }
+
+    return false; // The point is not in shadow with respect to any light
+}
+
+
+Color Renderer::adjustForShadows(const Color& originalColor) {
+    float shadowIntensity = 0.6f; // You can adjust this value to make the shadow lighter or darker
+    return originalColor * shadowIntensity; // Simply darken the color
+}
+
+Color Renderer::calculateReflection(const Ray& incidentRay, const Vector3& intersectionPoint, const Vector3& normal, const Material& material) {
+    Vector3 reflectedDirection = incidentRay.direction -  normal* 2 *Vector3::dot(incidentRay.direction, normal) ;
+    Ray reflectedRay(intersectionPoint, reflectedDirection);
+
+    // For simplicity, we are only considering a single level of reflection. 
+    // For multiple levels, you would need to implement a recursive approach.
+    for (auto* shape : scene.shapes) {
+        float distance;
+        if (intersect(reflectedRay, shape, distance)) {
+            // Use the material properties of the intersected shape to compute the reflected color
+            Vector3 hitPoint = intersectionPoint + distance * reflectedRay.direction;
+            Vector3 hitNormal = shape->getNormal(hitPoint);
+            Color localIllumination = calculateLocalIllumination(hitPoint, hitNormal, shape->material, -reflectedDirection, scene.lights);
+            return localIllumination;
+        }
+    }
+
+    // If no intersection, return the background color
+    return scene.backgroundColor;
+}
+
+Color blendColor(const Color& originalColor, const Color& reflectedColor, float reflectivity) {
+    return (1 - reflectivity) * originalColor + reflectivity * reflectedColor;
+}
+
 
 void Renderer::writeColorImageToPPM(const std::vector<std::vector<Color>>& image, const std::string& filename) {
     std::ofstream file(filename);
@@ -471,15 +533,15 @@ std::vector<std::vector<Color>> Renderer::renderPhong() {
                 pixelColor = calculateLocalIllumination(intersectionPoint, normal, closestShape->material, ray.direction, scene.lights);
                 // Shadows - check if the intersection point is in shadow
                 // (Optional: Could be optimized with shadow rays)
-                // if (isInShadow(intersectionPoint)) {
-                //     pixelColor = adjustForShadows(pixelColor);
-                // }
+                if (isInShadow(intersectionPoint, scene.shapes, scene.lights)) {
+                    pixelColor = adjustForShadows(pixelColor);
+                }
 
-                // // Reflection
-                // if (closestShape->material.isReflective) {
-                //     Color reflectedColor = calculateReflection(ray, intersectionPoint, normal, closestShape->material);
-                //     pixelColor = blendColor(pixelColor, reflectedColor, closestShape->material.reflectivity);
-                // }
+                // Reflection
+                if (closestShape->material.isReflective) {
+                    Color reflectedColor = calculateReflection(ray, intersectionPoint, normal, closestShape->material);
+                    pixelColor = blendColor(pixelColor, reflectedColor, closestShape->material.reflectivity);
+                }
 
                 // // Refraction
                 // if (closestShape->material.isRefractive) {

@@ -74,4 +74,7 @@ private:
 
     bool intersectBinary(const Ray& ray, Shape* shape);
     bool intersect(const Ray& ray, Shape* shape, float& distance);
+    bool isInShadow(const Vector3& point, const std::vector<Shape*>& shapes, const std::vector<LightSource*>& lights);
+    Color adjustForShadows(const Color& originalColor);
+    Color calculateReflection(const Ray& incidentRay, const Vector3& intersectionPoint, const Vector3& normal, const Material& material);
 };

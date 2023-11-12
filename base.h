@@ -65,6 +65,9 @@ public:
     static float projectAlongAxis(const Vector3& point, const Vector3& axis) {
         return Vector3::dot(point, Vector3::normalize(axis));
     }
+    static float length(const Vector3& v) {
+        return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    }
 };
 class Matrix4x4 {
 public:
@@ -153,6 +156,7 @@ public:
         b = std::max(0.0f, std::min(1.0f, b));
     }
 };
+
 
 class Material {
 public:
