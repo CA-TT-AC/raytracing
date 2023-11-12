@@ -366,7 +366,7 @@ Color calculateLocalIllumination(const Vector3& intersectionPoint,
                                  const Material& material, 
                                  const Vector3& viewDirection, 
                                  const std::vector<LightSource*>& lights) {
-    Color globalAmbientLight{0.5f, 0.5f, 0.5f}; // Assuming white color for global ambient light
+    Color globalAmbientLight{1, 1, 1}; // Assuming white color for global ambient light
     Color ambient = globalAmbientLight * material.ambientColor; // Global ambient light multiplied by the material's ambient color
     Color diffuse(0.0f, 0.0f, 0.0f);
     Color specular(0.0f, 0.0f, 0.0f);
@@ -379,11 +379,20 @@ Color calculateLocalIllumination(const Vector3& intersectionPoint,
         float diff = std::max(Vector3::dot(normal, lightDir), 0.0f);
         diffuse += lightPtr->intensity * (material.diffuseColor * diff);
 
+        // // Specular reflection
+        // float spec = std::pow(std::max(Vector3::dot(normal, halfVector), 0.0f), material.specularExponent);
+        // specular += lightPtr->intensity * (material.specularColor * spec);
         // Specular reflection
-        float spec = std::pow(std::max(Vector3::dot(normal, halfVector), 0.0f), material.specularExponent);
-        specular += lightPtr->intensity * (material.specularColor * spec);
-    }
+        float shininess = material.specularExponent;
+        float specCoefficient = std::pow(std::max(Vector3::dot(normal, halfVector), 0.0f), shininess);
 
+        // Reduce the intensity of the specular reflection if it's too strong
+        float specularIntensityReduction = 0.5f; // Value less than 1 to reduce intensity, experiment with this value
+        specCoefficient *= specularIntensityReduction;
+
+        specular += lightPtr->intensity * (material.specularColor * specCoefficient);
+    }
+        
     // Combine the components
     Color pixelColor = ambient + diffuse + specular;
 
@@ -425,27 +434,31 @@ Color Renderer::adjustForShadows(const Color& originalColor) {
 }
 
 Color Renderer::calculateReflection(const Ray& incidentRay, const Vector3& intersectionPoint, const Vector3& normal, const Material& material) {
-    Vector3 reflectedDirection = incidentRay.direction -  normal * 2 *Vector3::dot(incidentRay.direction, normal) ;
+    Vector3 reflectedDirection = incidentRay.direction - normal * 2 * Vector3::dot(incidentRay.direction, normal);
     float bias = 1e-4; // A small bias to avoid self-intersection
     Ray reflectedRay(intersectionPoint + bias * normal, reflectedDirection);
 
-
-    // For simplicity, we are only considering a single level of reflection. 
-    // For multiple levels, you would need to implement a recursive approach.
     for (auto* shape : scene.shapes) {
         float distance;
         if (intersect(reflectedRay, shape, distance)) {
-            // Use the material properties of the intersected shape to compute the reflected color
             Vector3 hitPoint = intersectionPoint + distance * reflectedRay.direction;
             Vector3 hitNormal = shape->getNormal(hitPoint);
-            Color localIllumination = calculateLocalIllumination(hitPoint, hitNormal, shape->material, -reflectedDirection, scene.lights);
-            return localIllumination;
+
+            // Check if the intersection point is in shadow
+            if (isInShadow(hitPoint, scene.shapes, scene.lights)) {
+                // If in shadow, use a darker color or the shadow color
+                return adjustForShadows(calculateLocalIllumination(hitPoint, hitNormal, shape->material, -reflectedDirection, scene.lights));
+            } else {
+                // If not in shadow, calculate the full illumination
+                return calculateLocalIllumination(hitPoint, hitNormal, shape->material, -reflectedDirection, scene.lights);
+            }
         }
     }
 
     // If no intersection, return the background color
     return scene.backgroundColor;
 }
+
 
 // Helper function to clamp a value
 float Renderer::clamp(float min, float max, float value) {
