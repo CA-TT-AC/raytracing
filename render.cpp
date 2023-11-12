@@ -11,7 +11,6 @@
 Color operator*(float scalar, const Color& color) {
     return color * scalar; // Utilize the existing Color * float overload
 }
-// Non-member overload for float * Vector3
 Vector3 operator*(float scalar, const Vector3& vec) {
     return vec * scalar; // Utilize the existing Vector3 * float overload
 }
@@ -367,7 +366,7 @@ Color calculateLocalIllumination(const Vector3& intersectionPoint,
                                  const Material& material, 
                                  const Vector3& viewDirection, 
                                  const std::vector<LightSource*>& lights) {
-    Color globalAmbientLight{1, 1, 1}; // Assuming white color for global ambient light
+    Color globalAmbientLight{0.5f, 0.5f, 0.5f}; // Assuming white color for global ambient light
     Color ambient = globalAmbientLight * material.ambientColor; // Global ambient light multiplied by the material's ambient color
     Color diffuse(0.0f, 0.0f, 0.0f);
     Color specular(0.0f, 0.0f, 0.0f);
@@ -426,8 +425,10 @@ Color Renderer::adjustForShadows(const Color& originalColor) {
 }
 
 Color Renderer::calculateReflection(const Ray& incidentRay, const Vector3& intersectionPoint, const Vector3& normal, const Material& material) {
-    Vector3 reflectedDirection = incidentRay.direction -  normal* 2 *Vector3::dot(incidentRay.direction, normal) ;
-    Ray reflectedRay(intersectionPoint, reflectedDirection);
+    Vector3 reflectedDirection = incidentRay.direction -  normal * 2 *Vector3::dot(incidentRay.direction, normal) ;
+    float bias = 1e-4; // A small bias to avoid self-intersection
+    Ray reflectedRay(intersectionPoint + bias * normal, reflectedDirection);
+
 
     // For simplicity, we are only considering a single level of reflection. 
     // For multiple levels, you would need to implement a recursive approach.
@@ -446,9 +447,75 @@ Color Renderer::calculateReflection(const Ray& incidentRay, const Vector3& inter
     return scene.backgroundColor;
 }
 
+// Helper function to clamp a value
+float Renderer::clamp(float min, float max, float value) {
+    return std::max(min, std::min(max, value));
+}
+
+Color Renderer::traceRefractedRay(const Ray& refractedRay) {
+    // Find the closest shape that the refracted ray intersects
+    Shape* closestShape = nullptr;
+    float closestDistance = std::numeric_limits<float>::max();
+    Vector3 closestIntersectionPoint;
+    Vector3 closestNormal;
+
+    for (Shape* shape : scene.shapes) {
+        float distance;
+        if (intersect(refractedRay, shape, distance)) {
+            if (distance < closestDistance) {
+                closestDistance = distance;
+                closestShape = shape;
+                closestIntersectionPoint = refractedRay.origin + refractedRay.direction * distance;
+                closestNormal = shape->getNormal(closestIntersectionPoint);
+            }
+        }
+    }
+
+    if (closestShape) {
+        // Compute the color at the intersection point
+        return calculateLocalIllumination(closestIntersectionPoint, closestNormal, closestShape->material, -refractedRay.direction, scene.lights);
+    } else {
+        // If the ray does not intersect anything, return the background color
+        return scene.backgroundColor;
+    }
+}
+
+Vector3 Renderer::refract(const Vector3& incident, const Vector3& normal, float eta) {
+    float cosi = clamp(-1.0f, 1.0f, Vector3::dot(incident, normal));
+    float etai = 1, etat = eta;
+    Vector3 n = normal;
+    if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -normal; }
+    float etaRatio = etai / etat;
+    float k = 1 - etaRatio * etaRatio * (1 - cosi * cosi);
+    return k < 0 ? Vector3(0,0,0) : etaRatio * incident + (etaRatio * cosi - sqrtf(k)) * n;
+}
+
+Color Renderer::calculateRefraction(const Ray& ray, const Vector3& intersectionPoint, const Vector3& normal, const Material& material) {
+    float refractionRatio = material.isRefractive ? (1.0f / material.refractiveIndex) : 1.0f;
+    Vector3 refractedDirection = refract(ray.direction, normal, refractionRatio);
+    
+    // Create the refracted ray
+    Ray refractedRay(intersectionPoint, refractedDirection);
+
+    // Trace the refracted ray through the scene
+    return traceRefractedRay(refractedRay);
+}
+
+
 Color blendColor(const Color& originalColor, const Color& reflectedColor, float reflectivity) {
     return (1 - reflectivity) * originalColor + reflectivity * reflectedColor;
 }
+
+Color toneMappingLinear(const Color& hdrColor, float exposure=1.0) {
+    // Apply exposure to the HDR color
+    Color mapped = hdrColor * exposure;
+
+    // Clamp the color values to the [0.0, 1.0] range
+    mapped.clamp();
+
+    return mapped;
+}
+
 
 
 void Renderer::writeColorImageToPPM(const std::vector<std::vector<Color>>& image, const std::string& filename) {
@@ -468,6 +535,7 @@ void Renderer::writeColorImageToPPM(const std::vector<std::vector<Color>>& image
 
 
 std::vector<std::vector<Color>> Renderer::render(){
+    printf("Start render....\n");
     if (renderMode == "phong"){
         return renderPhong();
     }
@@ -544,11 +612,11 @@ std::vector<std::vector<Color>> Renderer::renderPhong() {
                     pixelColor = blendColor(pixelColor, reflectedColor, closestShape->material.reflectivity);
                 }
 
-                // // Refraction
-                // if (closestShape->material.isRefractive) {
-                //     Color refractedColor = calculateRefraction(ray, intersectionPoint, normal, closestShape->material);
-                //     pixelColor = blendColor(pixelColor, refractedColor, closestShape->material.transparency);
-                // }
+                // Refraction
+                if (closestShape->material.isRefractive) {
+                    Color refractedColor = calculateRefraction(ray, intersectionPoint, normal, closestShape->material);
+                    pixelColor = blendColor(pixelColor, refractedColor, 1);
+                }
 
                 // // Textures
                 // if (closestShape->hasTexture()) {
@@ -556,8 +624,8 @@ std::vector<std::vector<Color>> Renderer::renderPhong() {
                 //     pixelColor = blendTextureColor(pixelColor, textureColor);
                 // }
 
-                // // Tone mapping - linear
-                // pixelColor = toneMapping(pixelColor);
+                // Tone mapping - linear
+                pixelColor = toneMappingLinear(pixelColor);
             }
             
             // Set the color of the pixel in the image

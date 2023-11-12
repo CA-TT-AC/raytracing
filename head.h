@@ -77,4 +77,8 @@ private:
     bool isInShadow(const Vector3& point, const std::vector<Shape*>& shapes, const std::vector<LightSource*>& lights);
     Color adjustForShadows(const Color& originalColor);
     Color calculateReflection(const Ray& incidentRay, const Vector3& intersectionPoint, const Vector3& normal, const Material& material);
+    Color traceRefractedRay(const Ray& refractedRay);
+    Color calculateRefraction(const Ray& ray, const Vector3& intersectionPoint, const Vector3& normal, const Material& material);
+    Vector3 refract(const Vector3& incident, const Vector3& normal, float eta);
+    float clamp(float min, float max, float value) ;
 };
