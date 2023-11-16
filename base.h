@@ -4,7 +4,8 @@
 #include <iostream>
 #include <vector>
 #include <string>
-
+#include <fstream>
+#include <memory>
 class Vector3 {
 public:
     float x, y, z;
@@ -156,7 +157,60 @@ public:
         b = std::max(0.0f, std::min(1.0f, b));
     }
 };
+class Texture {
+private:
+    std::vector<std::vector<Color>> imageData; // 2D array to store texture colors
+    int width, height; // Dimensions of the texture
 
+public:
+    // Default constructor: initializes texture dimensions to 0
+    Texture() : width(0), height(0) {}
+    // Constructor: initializes texture dimensions and optionally loads texture data
+    Texture(const std::string& filename) {
+        loadImage(filename);
+    }
+
+    // Load image data from a file
+    void loadImage(const std::string& filename) {
+        std::ifstream file(filename, std::ios::binary);
+        if (!file) {
+            std::cerr << "Unable to open file: " << filename << std::endl;
+            return;
+        }
+
+        // Reading BMP Header
+        char header[54];
+        file.read(header, 54);
+
+        // Extracting image dimensions
+        width = *(int*)&header[18];
+        height = *(int*)&header[22];
+
+        // Allocate memory for imageData
+        imageData.resize(height, std::vector<Color>(width));
+
+        // Reading pixel data
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                unsigned char color[3];
+                file.read(reinterpret_cast<char*>(color), 3);
+                imageData[y][x] = Color(color[2] / 255.0f, color[1] / 255.0f, color[0] / 255.0f); // RGB
+            }
+        }
+        file.close();
+    }
+
+    // Get color from texture coordinates (u, v)
+    // u and v are typically in the range [0, 1]
+    Color getColorAt(float u, float v) const {
+        // Map u, v to pixel coordinates
+        int x = static_cast<int>(u * width) % width;
+        int y = static_cast<int>(v * height) % height;
+
+        // Return the color at (x, y)
+        return imageData[y][x];
+    }
+};
 
 class Material {
 public:
@@ -170,8 +224,52 @@ public:
     float reflectivity;
     bool isRefractive;
     float refractiveIndex;
-
+    std::unique_ptr<Texture> diffuseTexture; // Texture attribute;
+    
     Material() : ks(0), kd(0), specularExponent(0), isReflective(false), reflectivity(0), isRefractive(false), refractiveIndex(1.0f) {}
+        // Method to load texture
+    void loadDiffuseTexture(const std::string& filepath) {
+        diffuseTexture = std::make_unique<Texture>();
+        diffuseTexture->loadImage(filepath);
+    }
+        // Custom copy constructor
+    Material(const Material& other) {
+        // Copy simple types
+        diffuseColor = other.diffuseColor;
+        specularColor = other.specularColor;
+        specularExponent = other.specularExponent;
+        isReflective = other.isReflective;
+        reflectivity = other.reflectivity;
+        isRefractive = other.isRefractive;
+        refractiveIndex = other.refractiveIndex;
+
+        // Deep copy the texture if it exists
+        if (other.diffuseTexture) {
+            diffuseTexture = std::make_unique<Texture>(*other.diffuseTexture);
+        }
+    }
+    // Custom copy assignment operator
+    Material& operator=(const Material& other) {
+        if (this != &other) {
+            // Copy simple types
+            diffuseColor = other.diffuseColor;
+            specularColor = other.specularColor;
+            specularExponent = other.specularExponent;
+            isReflective = other.isReflective;
+            reflectivity = other.reflectivity;
+            isRefractive = other.isRefractive;
+            refractiveIndex = other.refractiveIndex;
+
+            // Deep copy the texture if it exists
+            if (other.diffuseTexture) {
+                diffuseTexture = std::make_unique<Texture>(*other.diffuseTexture);
+            } else {
+                diffuseTexture.reset();
+            }
+        }
+        return *this;
+    }
+
 };
 
 class Shape {
@@ -179,13 +277,16 @@ public:
     Material material;
     virtual std::string getType() const = 0;
     virtual Vector3 getNormal(const Vector3& point) const = 0;
+    virtual bool hasTexture() const { return false; }
+    
 };
+
 
 class Sphere : public Shape {
 public:
     Vector3 center;
     float radius;
-    
+    Texture* texture; // Pointer to a texture object
     std::string getType() const override {
         return "sphere";
     }
@@ -193,6 +294,10 @@ public:
         Vector3 outwardNormal = p - center; // Vector from the center of the sphere to the point p
         return Vector3::normalize(outwardNormal); // Normalize this vector to get the normal
     }
+        
+    Sphere() : texture(nullptr) {} // Constructor initializes texture to nullptr
+
+    bool hasTexture() const override { return texture != nullptr; }
 };
 
 class Cylinder : public Shape {
@@ -226,6 +331,11 @@ public:
             return Vector3::normalize(p - onAxis);
         }
     }
+    Texture* texture; // Pointer to a texture object
+
+    Cylinder() : texture(nullptr) {} // Constructor initializes texture to nullptr
+
+    bool hasTexture() const override { return texture != nullptr; }
 
 };
 
@@ -241,6 +351,11 @@ public:
         Vector3 edge2 = v2 - v0;
         return Vector3::normalize(Vector3::cross(edge1, edge2)); // The normal is the cross product of two edges of the triangle
     }
+    Texture* texture; // Pointer to a texture object
+
+    Triangle() : texture(nullptr) {} // Constructor initializes texture to nullptr
+
+    bool hasTexture() const override { return texture != nullptr; }
 };
 
 

@@ -88,6 +88,10 @@ void Renderer::loadFromJSON(const std::string& filename) {
                 material.reflectivity = matJson["reflectivity"];
                 material.isRefractive = matJson["isrefractive"];
                 material.refractiveIndex = matJson["refractiveindex"];
+                if (matJson.contains("diffuseTexture")) {
+                    std::string texturePath = matJson["diffuseTexture"];
+                    material.loadDiffuseTexture(texturePath);
+                }
             }
             if (type == "sphere") {
                 Sphere* sphere = new Sphere();
