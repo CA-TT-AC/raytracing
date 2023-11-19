@@ -15,7 +15,7 @@ Vector3 operator*(float scalar, const Vector3& vec) {
     return vec * scalar; // Utilize the existing Vector3 * float overload
 }
 void Renderer::loadFromJSON(const std::string& filename) {
-    printf("Start loadFromJSON....\n");
+    // printf("Start loadFromJSON....\n");
     // Open the file and parse the JSON
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -114,7 +114,10 @@ void Renderer::loadFromJSON(const std::string& filename) {
             }
         }
     }
-    printf("Success loadFromJSON!\n");
+    // printf("Success loadFromJSON!\n");
+}
+Color blendColor(const Color& originalColor, const Color& reflectedColor, float reflectivity) {
+    return (1 - reflectivity) * originalColor + reflectivity * reflectedColor;
 }
 
 Ray Renderer::computeRay(int x, int y) {
@@ -444,8 +447,11 @@ Color Renderer::calculateReflection(const Ray& incidentRay, const Vector3& inter
             Vector3 hitPoint = intersectionPoint + distance * reflectedRay.direction;
             Vector3 hitNormal = shape->getNormal(hitPoint);
 
-            // Check if the intersection point is in shadow
-            if (isInShadow(hitPoint, scene.shapes, scene.lights)) {
+            if (shape->material.isRefractive) {
+                // Handle refraction for transparent objects
+                Color refractedColor = calculateRefraction(reflectedRay, hitPoint, hitNormal, shape->material);
+                return blendColor(refractedColor, calculateLocalIllumination(hitPoint, hitNormal, shape->material, -reflectedDirection, scene.lights), shape->material.reflectivity);
+            } else if (isInShadow(hitPoint, scene.shapes, scene.lights)) {
                 // If in shadow, use a darker color or the shadow color
                 return adjustForShadows(calculateLocalIllumination(hitPoint, hitNormal, shape->material, -reflectedDirection, scene.lights));
             } else {
@@ -458,6 +464,9 @@ Color Renderer::calculateReflection(const Ray& incidentRay, const Vector3& inter
     // If no intersection, return the background color
     return scene.backgroundColor;
 }
+
+
+
 
 
 // Helper function to clamp a value
@@ -515,9 +524,6 @@ Color Renderer::calculateRefraction(const Ray& ray, const Vector3& intersectionP
 }
 
 
-Color blendColor(const Color& originalColor, const Color& reflectedColor, float reflectivity) {
-    return (1 - reflectivity) * originalColor + reflectivity * reflectedColor;
-}
 
 Color toneMappingLinear(const Color& hdrColor, float exposure=1.0) {
     // Apply exposure to the HDR color
@@ -619,17 +625,17 @@ std::vector<std::vector<Color>> Renderer::renderPhong() {
                     pixelColor = adjustForShadows(pixelColor);
                 }
 
-                // Reflection
-                if (closestShape->material.isReflective) {
-                    Color reflectedColor = calculateReflection(ray, intersectionPoint, normal, closestShape->material);
-                    pixelColor = blendColor(pixelColor, reflectedColor, closestShape->material.reflectivity);
-                }
+                // // Reflection
+                // if (closestShape->material.isReflective) {
+                //     Color reflectedColor = calculateReflection(ray, intersectionPoint, normal, closestShape->material);
+                //     pixelColor = blendColor(pixelColor, reflectedColor, closestShape->material.reflectivity);
+                // }
 
-                // Refraction
-                if (closestShape->material.isRefractive) {
-                    Color refractedColor = calculateRefraction(ray, intersectionPoint, normal, closestShape->material);
-                    pixelColor = blendColor(pixelColor, refractedColor, 1);
-                }
+                // // Refraction
+                // if (closestShape->material.isRefractive) {
+                //     Color refractedColor = calculateRefraction(ray, intersectionPoint, normal, closestShape->material);
+                //     pixelColor = blendColor(pixelColor, refractedColor, 1);
+                // }
 
                 // // Textures
                 // if (closestShape->hasTexture()) {
